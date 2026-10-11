@@ -31,6 +31,30 @@ jobs:
         with:
           coderabbit_api_key: ${{ secrets.CODERABBIT_API_KEY }}
           forgejo_token: ${{ secrets.CODERABBIT_TOKEN }}
+
+      - name: Remove the coderabbit label
+        if: success()
+        env:
+          TOKEN: ${{ secrets.CODERABBIT_TOKEN }}
+        run: |
+          node <<'EOF'
+          const { readFileSync } = require('node:fs')
+          const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'))
+          const label = (event.pull_request.labels || []).find((item) => item.name.toLowerCase() === 'coderabbit')
+          if (!label) process.exit(0)
+          const url = `${process.env.GITHUB_API_URL}/repos/${process.env.GITHUB_REPOSITORY}/issues/${event.pull_request.number}/labels/${encodeURIComponent(label.name)}`
+          fetch(url, {
+            method: 'DELETE',
+            headers: { Authorization: `token ${process.env.TOKEN}` },
+          }).then(async (response) => {
+            if (response.status === 404) return
+            if (!response.ok) {
+              console.error(await response.text())
+              process.exit(1)
+            }
+            console.log(`Removed ${label.name}`)
+          })
+          EOF
 ```
 
 Inputs live in `action.yml`.
@@ -40,6 +64,7 @@ Inputs live in `action.yml`.
 - Reference a **published tag** (`@v1`). Publishing a GitHub release runs the same build-and-tag flow as the other actions and moves `v1` to that release.
 - `CODERABBIT_API_KEY` is a CodeRabbit Agentic API key. `CODERABBIT_TOKEN` is the Forgejo token for the account that should own the review, same pattern as `SAYORI_TOKEN`. That account needs Write on the repo.
 - The job fails with a warning when the pull request changes more than 150 files, and CodeRabbit is not called. 150 files still runs.
+- After a successful review the job removes the `coderabbit` label. A later push does not start another CLI review. Add the label again when you want one.
 - Use `build-node26`. The CLI is a glibc binary, and `light-node26` is Alpine. The binary asks for `/lib64/ld-linux-x86-64.so.2`, which that image does not have. A gcompat shim can start it, and the process then aborts. `build-node26` already has git and curl. The installer also needs the `unzip` and `openssl` commands, so install those before the action.
 
 ## License
