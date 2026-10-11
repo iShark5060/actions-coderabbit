@@ -1,8 +1,8 @@
 import { execFileSync, spawn } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 
 const REVIEW_MARKER = '<!-- coderabbit-review -->'
 const FINDING_MARKER = '<!-- coderabbit-finding -->'
@@ -481,8 +481,18 @@ async function main() {
   }
 }
 
-const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
-if (isDirectRun) {
+export function scriptMatchesEntry(entry, filename) {
+  if (!entry || !filename) return false
+  try {
+    // The runner starts the action through /var/run, a symlink to /run.
+    // import.meta.url is the real path, so a string compare never calls main.
+    return realpathSync(entry) === realpathSync(filename)
+  } catch {
+    return false
+  }
+}
+
+if (scriptMatchesEntry(process.argv[1], fileURLToPath(import.meta.url))) {
   main().catch((err) => {
     if (!err.warning) annotation('error', err.message)
     console.error(err.message)

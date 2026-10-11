@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
 import {
@@ -14,6 +17,7 @@ import {
   repositoryGitUrl,
   resolveActionEnv,
   reviewFailed,
+  scriptMatchesEntry,
 } from './review.mjs'
 
 test('asks Alpine for curl and git only when they are missing', () => {
@@ -147,6 +151,19 @@ test('omits the comments field when there is nothing to put on a line', async ()
     commitId: 'abc',
   })
   assert.equal(Object.hasOwn(payload, 'comments'), false)
+})
+
+test('treats a path through a directory link as this script', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'coderabbit-'))
+  const realDir = join(dir, 'run')
+  const linkDir = join(dir, 'var-run')
+  mkdirSync(realDir)
+  const file = join(realDir, 'review.mjs')
+  writeFileSync(file, '')
+  symlinkSync(realDir, linkDir, 'junction')
+  assert.equal(scriptMatchesEntry(join(linkDir, 'review.mjs'), file), true)
+  assert.equal(scriptMatchesEntry(join(dir, 'missing.mjs'), file), false)
+  rmSync(dir, { recursive: true, force: true })
 })
 
 test('strips the checkout prefix from finding paths', () => {
