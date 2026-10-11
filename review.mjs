@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -16,6 +17,13 @@ export function parseChangedFiles(diffText) {
 
 export function isOverFileLimit(count, maxFiles) {
   return count > maxFiles
+}
+
+export function alpinePackages({ hasCurl, hasGit }) {
+  const packages = []
+  if (!hasCurl) packages.push('curl', 'ca-certificates')
+  if (!hasGit) packages.push('git')
+  return packages
 }
 
 export function fileLimitMessage(count, maxFiles) {
@@ -270,8 +278,30 @@ async function forgejoRequest(apiUrl, token, method, path, body) {
   return text ? JSON.parse(text) : null
 }
 
+function commandExists(name) {
+  try {
+    execFileSync('sh', ['-c', `command -v ${name}`], { stdio: 'ignore' })
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function ensureAlpineTools() {
+  if (!existsSync('/etc/alpine-release')) return
+  const packages = alpinePackages({
+    hasCurl: commandExists('curl'),
+    hasGit: commandExists('git'),
+  })
+  if (packages.length === 0) return
+  const install = await run('apk', ['add', '--no-cache', ...packages])
+  if (install.code !== 0) {
+    throw new Error(`Could not install ${packages.join(' ')} on Alpine.`)
+  }
+}
+
 async function coderabbitBin() {
-  const install = await run('bash', ['-lc', 'curl -fsSL https://cli.coderabbit.ai/install.sh | sh'])
+  const install = await run('sh', ['-c', 'curl -fsSL https://cli.coderabbit.ai/install.sh | sh'])
   if (install.code !== 0) {
     throw new Error('CodeRabbit CLI install failed.')
   }
@@ -296,6 +326,7 @@ async function main() {
   const runUrl = process.env.RUN_URL || ''
   const maxFiles = parseMaxFiles(process.env.MAX_FILES || '150')
 
+  await ensureAlpineTools()
   const count = changedFileCount(baseRef)
   console.log(`Changed files: ${count}`)
   if (count === 0) {

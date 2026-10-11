@@ -18,7 +18,7 @@ runs:
   using: composite
   steps:
     - name: Review pull request
-      shell: bash
+      shell: sh
       env:
         CODERABBIT_API_KEY: ${{ inputs.coderabbit_api_key }}
         CODERABBIT_TOKEN: ${{ inputs.forgejo_token }}
