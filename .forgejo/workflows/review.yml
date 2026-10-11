@@ -27,3 +27,27 @@ jobs:
         with:
           coderabbit_api_key: ${{ secrets.CODERABBIT_API_KEY }}
           forgejo_token: ${{ secrets.CODERABBIT_TOKEN }}
+
+      - name: Remove the coderabbit label
+        if: success()
+        env:
+          TOKEN: ${{ secrets.CODERABBIT_TOKEN }}
+        run: |
+          node <<'EOF'
+          const { readFileSync } = require('node:fs')
+          const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'))
+          const label = (event.pull_request.labels || []).find((item) => item.name.toLowerCase() === 'coderabbit')
+          if (!label) process.exit(0)
+          const url = `${process.env.GITHUB_API_URL}/repos/${process.env.GITHUB_REPOSITORY}/issues/${event.pull_request.number}/labels/${encodeURIComponent(label.name)}`
+          fetch(url, {
+            method: 'DELETE',
+            headers: { Authorization: `token ${process.env.TOKEN}` },
+          }).then(async (response) => {
+            if (response.status === 404) return
+            if (!response.ok) {
+              console.error(await response.text())
+              process.exit(1)
+            }
+            console.log(`Removed ${label.name}`)
+          })
+          EOF
