@@ -1,0 +1,26 @@
+name: CodeRabbit
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    if: contains(github.event.pull_request.labels.*.name, 'coderabbit')
+    runs-on: light-node26
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Review
+        uses: ./
+        with:
+          coderabbit_api_key: ${{ secrets.CODERABBIT_API_KEY }}
+          forgejo_token: ${{ secrets.CODERABBIT_TOKEN }}

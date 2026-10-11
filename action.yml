@@ -1,0 +1,33 @@
+name: CodeRabbit
+description: Review a Forgejo pull request with the CodeRabbit CLI and post the findings as that user's review.
+author: iShark5060
+
+inputs:
+  coderabbit_api_key:
+    description: CodeRabbit Agentic API key. Pass secrets.CODERABBIT_API_KEY.
+    required: true
+  forgejo_token:
+    description: Forgejo access token for the user that should own the review comments. Pass secrets.CODERABBIT_TOKEN.
+    required: true
+  max_files:
+    description: Stop before calling CodeRabbit when the pull request changes more files than this.
+    required: false
+    default: '150'
+
+runs:
+  using: composite
+  steps:
+    - name: Review pull request
+      shell: bash
+      env:
+        CODERABBIT_API_KEY: ${{ inputs.coderabbit_api_key }}
+        CODERABBIT_TOKEN: ${{ inputs.forgejo_token }}
+        MAX_FILES: ${{ inputs.max_files }}
+        FORGEJO_API_URL: ${{ github.api_url }}
+        REPOSITORY: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        BASE_REF: ${{ github.base_ref }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        EVENT_NAME: ${{ github.event_name }}
+      run: node "${{ github.action_path }}/review.mjs"
