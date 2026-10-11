@@ -20,10 +20,11 @@ import {
   scriptMatchesEntry,
 } from './review.mjs'
 
-test('asks Alpine for curl and git only when they are missing', () => {
-  assert.deepEqual(alpinePackages({ hasCurl: true, hasGit: true }), [])
-  assert.deepEqual(alpinePackages({ hasCurl: false, hasGit: true }), ['curl', 'ca-certificates'])
-  assert.deepEqual(alpinePackages({ hasCurl: true, hasGit: false }), ['git'])
+test('asks Alpine for curl, git, and openssl only when they are missing', () => {
+  assert.deepEqual(alpinePackages({ hasCurl: true, hasGit: true, hasOpenssl: true }), [])
+  assert.deepEqual(alpinePackages({ hasCurl: false, hasGit: true, hasOpenssl: true }), ['curl', 'ca-certificates'])
+  assert.deepEqual(alpinePackages({ hasCurl: true, hasGit: false, hasOpenssl: true }), ['git'])
+  assert.deepEqual(alpinePackages({ hasCurl: true, hasGit: true, hasOpenssl: false }), ['openssl'])
 })
 
 test('counts changed files and allows the 150 file cap', () => {
