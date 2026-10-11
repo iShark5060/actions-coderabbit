@@ -19,10 +19,11 @@ export function isOverFileLimit(count, maxFiles) {
   return count > maxFiles
 }
 
-export function alpinePackages({ hasCurl, hasGit }) {
+export function alpinePackages({ hasCurl, hasGit, hasOpenssl }) {
   const packages = []
   if (!hasCurl) packages.push('curl', 'ca-certificates')
   if (!hasGit) packages.push('git')
+  if (!hasOpenssl) packages.push('openssl')
   return packages
 }
 
@@ -355,6 +356,7 @@ async function ensureAlpineTools() {
   const packages = alpinePackages({
     hasCurl: commandExists('curl'),
     hasGit: commandExists('git'),
+    hasOpenssl: commandExists('openssl'),
   })
   if (packages.length === 0) return
   const install = await run('apk', ['add', '--no-cache', ...packages])

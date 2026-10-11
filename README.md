@@ -41,7 +41,7 @@ Inputs live in `action.yml`.
 - Reference a **published tag** (`@v1`). Publishing a GitHub release runs the same build-and-tag flow as the other actions and moves `v1` to that release.
 - `CODERABBIT_API_KEY` is a CodeRabbit Agentic API key. `CODERABBIT_TOKEN` is the Forgejo token for the account that should own the review, same pattern as `SAYORI_TOKEN`. That account needs Write on the repo.
 - The job fails with a warning when the pull request changes more than 150 files, and CodeRabbit is not called. 150 files still runs.
-- Use a Linux runner (`light-node26`). That image has no git and no bash. Install git with `shell: sh` before checkout, or the checkout is a zip and the review has nothing to diff. The CLI installer in this action is the Linux script.
+- Use a Linux runner (`light-node26`). That image has no git and no bash. Install git with `shell: sh` before checkout, or the checkout is a zip and the review has nothing to diff. The CLI installer in this action is the Linux script. On Alpine the action installs curl, git, and openssl when those commands are missing, because the installer will not authenticate a release without openssl.
 
 ## License
 
