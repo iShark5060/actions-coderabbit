@@ -376,7 +376,7 @@ async function coderabbitBin() {
 async function main() {
   const settings = resolveActionEnv(process.env, loadEvent())
   if (process.platform === 'win32') {
-    throw new Error('This action runs on the Linux runners (light-node26).')
+    throw new Error('This action runs on the Linux runners (build-node26).')
   }
   if (settings.EVENT_NAME && settings.EVENT_NAME !== 'pull_request') {
     throw new Error('This action only runs on pull requests.')
