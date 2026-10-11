@@ -11,6 +11,8 @@ import {
   parseMaxFiles,
   publishReview,
   repoRelativePath,
+  repositoryGitUrl,
+  resolveActionEnv,
   reviewFailed,
 } from './review.mjs'
 
@@ -26,6 +28,31 @@ test('counts changed files and allows the 150 file cap', () => {
   assert.equal(isOverFileLimit(151, 150), true)
   assert.match(fileLimitMessage(151, 150), /151 files/)
   assert.match(fileLimitMessage(151, 150), /was not run/)
+})
+
+test('reads the node action inputs and the pull request event', () => {
+  const settings = resolveActionEnv(
+    {
+      INPUT_CODERABBIT_API_KEY: 'key',
+      INPUT_FORGEJO_TOKEN: 'tok',
+      INPUT_MAX_FILES: '10',
+      GITHUB_API_URL: 'https://git.example/api/v1',
+      GITHUB_REPOSITORY: 'acme/app',
+      GITHUB_SERVER_URL: 'https://git.example',
+      GITHUB_RUN_ID: '9',
+      GITHUB_EVENT_NAME: 'pull_request',
+      GITHUB_TOKEN: 'actions-token',
+    },
+    { pull_request: { number: 4, head: { sha: 'abc' }, base: { ref: 'main' } } },
+  )
+  assert.equal(settings.CODERABBIT_API_KEY, 'key')
+  assert.equal(settings.CODERABBIT_TOKEN, 'tok')
+  assert.equal(settings.PR_NUMBER, '4')
+  assert.equal(settings.HEAD_SHA, 'abc')
+  assert.equal(settings.BASE_REF, 'main')
+  assert.equal(settings.RUN_URL, 'https://git.example/acme/app/actions/runs/9')
+  assert.equal(settings.HISTORY_TOKEN, 'actions-token')
+  assert.equal(repositoryGitUrl(settings.SERVER_URL, settings.REPOSITORY), 'https://git.example/acme/app.git')
 })
 
 test('rejects a bad file cap', () => {
