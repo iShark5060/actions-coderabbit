@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  alpinePackages,
   buildReview,
   fileLimitMessage,
   isOverFileLimit,
@@ -12,6 +13,12 @@ import {
   repoRelativePath,
   reviewFailed,
 } from './review.mjs'
+
+test('asks Alpine for curl and git only when they are missing', () => {
+  assert.deepEqual(alpinePackages({ hasCurl: true, hasGit: true }), [])
+  assert.deepEqual(alpinePackages({ hasCurl: false, hasGit: true }), ['curl', 'ca-certificates'])
+  assert.deepEqual(alpinePackages({ hasCurl: true, hasGit: false }), ['git'])
+})
 
 test('counts changed files and allows the 150 file cap', () => {
   assert.deepEqual(parseChangedFiles('src/a.js\nsrc/b.js\n\n'), ['src/a.js', 'src/b.js'])
