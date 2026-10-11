@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -29,6 +29,41 @@ export function alpinePackages({ hasCurl, hasGit }) {
 export function fileLimitMessage(count, maxFiles) {
   const fileWord = count === 1 ? 'file' : 'files'
   return `CodeRabbit was not run. This pull request changes ${count} ${fileWord}, which is over the ${maxFiles} file limit.`
+}
+
+function pick(env, ...keys) {
+  for (const key of keys) {
+    const value = env[key]
+    if (value != null && String(value).trim()) return String(value).trim()
+  }
+  return ''
+}
+
+export function resolveActionEnv(env, event = {}) {
+  const pr = event.pull_request || {}
+  const server = pick(env, 'GITHUB_SERVER_URL').replace(/\/$/, '')
+  const repo = pick(env, 'REPOSITORY', 'GITHUB_REPOSITORY')
+  const runId = pick(env, 'GITHUB_RUN_ID')
+  const apiUrl = pick(env, 'FORGEJO_API_URL', 'GITHUB_API_URL').replace(/\/$/, '')
+  const runUrl = pick(env, 'RUN_URL')
+  return {
+    CODERABBIT_API_KEY: pick(env, 'CODERABBIT_API_KEY', 'INPUT_CODERABBIT_API_KEY'),
+    CODERABBIT_TOKEN: pick(env, 'CODERABBIT_TOKEN', 'INPUT_FORGEJO_TOKEN'),
+    MAX_FILES: pick(env, 'MAX_FILES', 'INPUT_MAX_FILES') || '150',
+    FORGEJO_API_URL: apiUrl,
+    REPOSITORY: repo,
+    PR_NUMBER: pick(env, 'PR_NUMBER') || (pr.number == null ? '' : String(pr.number)),
+    BASE_REF: pick(env, 'BASE_REF', 'GITHUB_BASE_REF') || pr.base?.ref || '',
+    HEAD_SHA: pick(env, 'HEAD_SHA') || pr.head?.sha || pick(env, 'GITHUB_SHA'),
+    RUN_URL: runUrl || (server && repo && runId ? `${server}/${repo}/actions/runs/${runId}` : ''),
+    EVENT_NAME: pick(env, 'EVENT_NAME', 'GITHUB_EVENT_NAME'),
+    SERVER_URL: server || apiUrl.replace(/\/api\/v1$/, ''),
+    HISTORY_TOKEN: pick(env, 'GITHUB_TOKEN', 'CODERABBIT_TOKEN', 'INPUT_FORGEJO_TOKEN'),
+  }
+}
+
+export function repositoryGitUrl(serverUrl, repo) {
+  return `${String(serverUrl).replace(/\/$/, '')}/${repo}.git`
 }
 
 export function parseMaxFiles(value) {
@@ -217,28 +252,56 @@ function annotation(level, message) {
   console.log(`::${level}::${text}`)
 }
 
-function requireEnv(name) {
-  const value = process.env[name]
-  if (!value || !value.trim()) {
-    throw new Error(`${name} is empty.`)
-  }
-  return value.trim()
+function gitArgs(args, token) {
+  return token ? ['-c', `http.extraHeader=AUTHORIZATION: token ${token}`, ...args] : args
 }
 
-function git(args) {
-  return execFileSync('git', args, {
+function git(args, token) {
+  return execFileSync('git', gitArgs(args, token), {
     encoding: 'utf8',
     env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
   })
 }
 
-function changedFileCount(baseRef) {
-  execFileSync('git', ['fetch', '--no-tags', 'origin', `+refs/heads/${baseRef}:refs/remotes/origin/${baseRef}`], {
+function runGit(args, token) {
+  execFileSync('git', gitArgs(args, token), {
     stdio: 'inherit',
     env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
   })
-  const diff = git(['diff', '--name-only', `origin/${baseRef}...HEAD`])
+}
+
+function changedFileCount(baseRef, token) {
+  runGit(['fetch', '--no-tags', 'origin', `+refs/heads/${baseRef}:refs/remotes/origin/${baseRef}`], token)
+  const diff = git(['diff', '--name-only', `origin/${baseRef}...HEAD`], token)
   return parseChangedFiles(diff).length
+}
+
+function loadEvent() {
+  const path = process.env.GITHUB_EVENT_PATH
+  if (!path || !existsSync(path)) return {}
+  return JSON.parse(readFileSync(path, 'utf8'))
+}
+
+async function ensureHistory(settings) {
+  if (existsSync('.git')) return
+  if (!settings.HEAD_SHA || !settings.BASE_REF || !settings.REPOSITORY || !settings.SERVER_URL) {
+    throw new Error('The checkout has no git history, and the pull request ref is missing.')
+  }
+  console.log('The checkout has no git history. Fetching the pull request.')
+  const token = settings.HISTORY_TOKEN
+  runGit(['init'], token)
+  runGit(['remote', 'add', 'origin', repositoryGitUrl(settings.SERVER_URL, settings.REPOSITORY)], token)
+  runGit(
+    [
+      'fetch',
+      '--no-tags',
+      'origin',
+      settings.HEAD_SHA,
+      `+refs/heads/${settings.BASE_REF}:refs/remotes/origin/${settings.BASE_REF}`,
+    ],
+    token,
+  )
+  runGit(['checkout', '--force', '--detach', settings.HEAD_SHA], token)
 }
 
 function run(command, args, { capture = false } = {}) {
@@ -309,25 +372,38 @@ async function coderabbitBin() {
 }
 
 async function main() {
+  const settings = resolveActionEnv(process.env, loadEvent())
   if (process.platform === 'win32') {
     throw new Error('This action runs on the Linux runners (light-node26).')
   }
-  if (process.env.EVENT_NAME && process.env.EVENT_NAME !== 'pull_request') {
+  if (settings.EVENT_NAME && settings.EVENT_NAME !== 'pull_request') {
     throw new Error('This action only runs on pull requests.')
   }
 
-  const apiKey = requireEnv('CODERABBIT_API_KEY')
-  const forgejoToken = requireEnv('CODERABBIT_TOKEN')
-  const apiUrl = requireEnv('FORGEJO_API_URL').replace(/\/$/, '')
-  const repo = requireEnv('REPOSITORY')
-  const pr = requireEnv('PR_NUMBER')
-  const baseRef = requireEnv('BASE_REF')
-  const headSha = requireEnv('HEAD_SHA')
-  const runUrl = process.env.RUN_URL || ''
-  const maxFiles = parseMaxFiles(process.env.MAX_FILES || '150')
+  const apiKey = settings.CODERABBIT_API_KEY
+  const forgejoToken = settings.CODERABBIT_TOKEN
+  const apiUrl = settings.FORGEJO_API_URL
+  const repo = settings.REPOSITORY
+  const pr = settings.PR_NUMBER
+  const baseRef = settings.BASE_REF
+  const headSha = settings.HEAD_SHA
+  const runUrl = settings.RUN_URL
+  for (const [name, value] of [
+    ['CODERABBIT_API_KEY', apiKey],
+    ['CODERABBIT_TOKEN', forgejoToken],
+    ['FORGEJO_API_URL', apiUrl],
+    ['REPOSITORY', repo],
+    ['PR_NUMBER', pr],
+    ['BASE_REF', baseRef],
+    ['HEAD_SHA', headSha],
+  ]) {
+    if (!value) throw new Error(`${name} is empty.`)
+  }
+  const maxFiles = parseMaxFiles(settings.MAX_FILES)
 
   await ensureAlpineTools()
-  const count = changedFileCount(baseRef)
+  await ensureHistory(settings)
+  const count = changedFileCount(baseRef, settings.HISTORY_TOKEN)
   console.log(`Changed files: ${count}`)
   if (count === 0) {
     console.log('No changed files. Skipping CodeRabbit.')

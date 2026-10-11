@@ -15,19 +15,5 @@ inputs:
     default: '150'
 
 runs:
-  using: composite
-  steps:
-    - name: Review pull request
-      shell: sh
-      env:
-        CODERABBIT_API_KEY: ${{ inputs.coderabbit_api_key }}
-        CODERABBIT_TOKEN: ${{ inputs.forgejo_token }}
-        MAX_FILES: ${{ inputs.max_files }}
-        FORGEJO_API_URL: ${{ github.api_url }}
-        REPOSITORY: ${{ github.repository }}
-        PR_NUMBER: ${{ github.event.pull_request.number }}
-        BASE_REF: ${{ github.base_ref }}
-        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        EVENT_NAME: ${{ github.event_name }}
-      run: node "${{ github.action_path }}/review.mjs"
+  using: node24
+  main: review.mjs
